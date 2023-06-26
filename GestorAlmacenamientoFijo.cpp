@@ -5,7 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
-//#include <filesystem> //C++ 17
+#include <filesystem> //C++ 17
 
 #include <vector>
 #include <unordered_map>
@@ -163,13 +163,24 @@ public:
 
 		archivo.open(nombre_archivo, std::ios::in | std::ios::binary);
 
-		if (!archivo) {
+		if (!archivo) { //Si el archivo no existe, crea uno
 			archivo.close();
 			archivo.open(nombre_archivo, std::ios::out | std::ios::binary);
 
 			for (unsigned j = 1; j <= campos_por_pag * num_total_pags; ++j) {
 				campo.id = j;
 				archivo.write(reinterpret_cast<const char*>(&campo), sizeof(Encapsular<T>));
+			}
+		}
+		else { //Si existe el archivo, compruba que su cantidad de bytes sea igual que a la multiplicacion de
+			//cantidad de paginas, cantidad campos y el peso del tipo de dato que almacena (PAGE_SIZE)		
+			std::filesystem::path direccion_archivo(nombre_archivo);
+			auto peso_archivo{ std::filesystem::file_size(nombre_archivo) };
+			if (peso_archivo != PAGE_SIZE) {
+				std::cerr << "La cantidad de bytes del archivo abierto, no coincide con la cantidad que deberia tener!\n\n"
+					<< "CANTIDAD DE PAGINAS: " << num_total_pags << "\nCAMPOS POR PAGINA: " << campos_por_pag << "\nBYTES DEL TIPO DE DATO: " << sizeof(Encapsular<T>)
+					<< "\nBYTES POR PAGINA: " << campos_por_pag * sizeof(Encapsular<T>) << "\nBYTES DEL ARCHIVO INGRESADO: " << peso_archivo << "\nBYTES QUE DEBERIA TENER: " << PAGE_SIZE << '\n';
+				exit(EXIT_FAILURE);
 			}
 		}
 
@@ -345,9 +356,9 @@ int main() {
 	//https://drive.google.com/file/d/1pm6MlsY6xh-RXvd_jDwHfGA2MMmzdnTw/view?usp=sharing
 
 	auto clientes = GestorAlmacenamientoFijo<Cliente>("prueba.bin", 5, 50); //Nombre del archivo, numeros de paginas, cantidad de campos por pagina
-
+																			//Pude cargar archivos ya creados, para leer o añadir contenido
 	try {
-		clientes.escribirBloque(0, Cliente::generarClientesAleatorios(50)); //Pude cargar archivos ya creados, para leer o añadir contenido
+		clientes.escribirBloque(0, Cliente::generarClientesAleatorios(50)); 
 
 		clientes.escribirBloque(1, Cliente::generarClientesAleatorios(50));
 
@@ -377,10 +388,13 @@ int main() {
 	std::cout << "\n\n***PRIMER BLOQUE***\n";
 	clientes.leerPrimerBloque();
 
-	clientes.agregarBloqueVacio();
-
+	clientes.agregarBloqueVacio();	//Añade un bloque vacio, modifica la cantidad de pag del archivo, 
+									//Al volver a abrir el archivo desde el constructor se debe cambiar 
+									//la cantidad de paginas a la nueva cantidad o enviara un error
 	std::cout << "\n\n***NUEVO BLOQUE***\n";
 	clientes.leerBloque(5); //Nuevo Bloque
+
+	clientes.leerTodo();
 
 	return 0;
 }
