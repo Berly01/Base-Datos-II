@@ -6,7 +6,6 @@
 #include <sstream>
 #include <iomanip>
 #include <filesystem> //C++ 17
-#include <bitset>
 
 #include <vector>
 #include <unordered_map>
@@ -59,40 +58,46 @@ for (auto i = 0; i < p1.vec.size(); i++) {
 archivo.close();
 */
 
-void error() {
-	std::vector<bool> vec_1(10, 0);
+/*
+void agregarBloqueVacio() {
 
-	const auto tam = sizeof(std::vector<bool>) + sizeof(bool) * vec_1.size();
+	archivo.open(nombre_archivo, std::ios::ate | std::ios::out | std::ios::in | std::ios::binary);
 
-	std::fstream archivo("archivo.bin", std::ios::out | std::ios::binary);
-
-	archivo.write(reinterpret_cast<const char*>(&vec_1), tam);
-
-	archivo.close();
-
-	archivo.open("archivo.bin", std::ios::in, std::ios::binary);
-
-	std::vector<bool> vec_2{};
-
-	archivo.read(reinterpret_cast<char*>(&vec_2), tam);
-
-	for (const auto& i : vec_2) {
-		std::cout << i << " ";
+	if (!archivo) {
+		std::cerr << "No se pudo abrir el archivo '" + nombre_archivo + "'\n";
+		exit(EXIT_FAILURE);
 	}
+
+	auto campos_totales = num_total_pags * campos_por_pag;
+
+	Encapsular<T> campo;
+
+	for (unsigned j = 1; j <= campos_por_pag; ++j) {
+		campo.id = campos_totales + j;
+		archivo.write(reinterpret_cast<const char*>(&campo), sizeof(Encapsular<T>));
+	}
+
+	num_total_pags += 1;
+	pos_paginas.insert(std::make_pair(num_total_pags, PAGE_SIZE * num_total_pags));
 
 	archivo.close();
 }
+*/
 
 class MapaBits {
+	template<typename T> friend class ArchivoFijo;
 private:
-	std::vector<bool> bits;
+	unsigned cantidad{};
+	std::vector<bool> bits{};
 public:
-	MapaBits(const size_t& cantidad) {
+	MapaBits(const unsigned& cantidad) : cantidad(cantidad) {
 		for (unsigned i = 0; i < cantidad; i++) {
 			bits.push_back(false);
 		}
 	}
-	void inicializarNuevoMapa(const size_t& cantidad) {
+	MapaBits() : cantidad(0) {};
+	void inicializarNuevoMapa(const unsigned& cantidad) {
+		this->cantidad = cantidad;
 		if (!bits.empty()) {
 			bits.clear();
 		}
@@ -100,19 +105,19 @@ public:
 			bits.push_back(false);
 		}
 	}
-	void setBit(const size_t& indice) {
+	void setBit(const unsigned& indice) {
 		if (indice >= bits.size()) {
 			throw std::out_of_range("El indice ingresado sale del rango del mapa de bits!\n");
 		}
 		bits[indice] = true;
 	}
-	void clearBit(const size_t& indice) {
+	void clearBit(const unsigned& indice) {
 		if (indice >= bits.size()) {
 			throw std::out_of_range("El indice ingresado sale del rango del mapa de bits!\n");
 		}
 		bits[indice] = false;
 	}
-	bool getBit(const size_t& indice) const {
+	bool getBit(const unsigned& indice) const {
 		if (indice >= bits.size()) {
 			throw std::out_of_range("El indice ingresado sale del rango del mapa de bits!\n");
 		}
@@ -121,8 +126,26 @@ public:
 	auto getTotalSize() {
 		return sizeof(MapaBits) + sizeof(bool) * bits.size();
 	}
+	friend std::ofstream& operator<<(std::ofstream& os, const MapaBits& m_b) {
+		os.write(reinterpret_cast<const char*>(&m_b.cantidad), sizeof(m_b.cantidad));
+		for (const auto& b : m_b.bits) {
+			os.write(reinterpret_cast<const char*>(&b), sizeof(b));
+		}
+		return os;
+	}
+	friend std::ifstream& operator>>(std::ifstream& in, MapaBits& m_b) {
+		in.read(reinterpret_cast<char*>(&m_b.cantidad), sizeof(m_b.cantidad));
+		if (!m_b.bits.empty()) { m_b.bits.clear(); }
+		bool aux;
+		for (unsigned i = 0; i < m_b.cantidad; i++) {
+			in.read(reinterpret_cast<char*>(&aux), sizeof(aux));
+			m_b.bits.push_back(aux);
+		}
+		return in;
+	}
 };
 
+//Fijo
 class PersonTitanic
 {
 private:
@@ -281,6 +304,7 @@ public:
 
 template<typename T>
 class ArchivoFijo {
+	template<typename R> friend class BufferPoolManager;
 private:
 	class CabezeraInicial {
 		template<typename R> friend class ArchivoFijo;
@@ -297,9 +321,24 @@ private:
 	private:
 		std::streampos sig_cabezera_pagina{};
 		size_t espacio_libre{};
+		MapaBits mapa_bits{};
 	public:
-		CabezeraPagina(const std::streampos& sig_cabezera_pagina) : sig_cabezera_pagina(sig_cabezera_pagina){}
+		CabezeraPagina(const std::streampos& sig_cabezera_pagina, const unsigned& tam_mp) : sig_cabezera_pagina(sig_cabezera_pagina), espacio_libre(0){
+			mapa_bits.inicializarNuevoMapa(tam_mp);
+		}
 		CabezeraPagina() : sig_cabezera_pagina(0), espacio_libre(0){}
+
+		friend std::ofstream& operator<<(std::ofstream& os, const CabezeraPagina& c) {
+			
+
+
+			return os;
+		}
+
+		friend std::ifstream& operator>>(std::ifstream& in, CabezeraPagina& c) {
+
+			return in;
+		}
 	};
 
 	template<typename U>
@@ -316,18 +355,17 @@ private:
 
 private:
 	unsigned num_total_pags{};
-	unsigned campos_por_pag{};
+	const unsigned campos_por_pag{};
 	unsigned pag_actual{};
 	size_t PAGE_SIZE{};
-	std::string nombre_archivo;
-	std::fstream archivo;
+	const std::string nombre_archivo{};
+	std::fstream archivo{};
 	std::unordered_map<unsigned, std::streampos> map_pos_cabezales{};
 public:
-	ArchivoFijo(const std::string_view& nombre_archivo, const unsigned& num_total_pags, const unsigned& campos_por_pag) {
+	ArchivoFijo(const std::string_view& nombre_archivo, const unsigned& num_total_pags, const unsigned& campos_por_pag)
+		: nombre_archivo(nombre_archivo), campos_por_pag(campos_por_pag){
 
 		this->num_total_pags = num_total_pags;
-		this->campos_por_pag = campos_por_pag;
-		this->nombre_archivo = nombre_archivo;
 		this->pag_actual = 0;
 
 		const auto tam_CabezaraPagina = sizeof(CabezeraPagina);
@@ -402,8 +440,8 @@ public:
 
 			archivo.seekg(cabezera_pagina.sig_cabezera_pagina);
 		}
-	 
-		archivo.close();	
+
+		archivo.close();
 	}
 
 	~ArchivoFijo() {}
@@ -427,6 +465,14 @@ public:
 
 	auto getNumPaginas() const {
 		return num_total_pags;
+	}
+
+	auto getNombreArchivo() const {
+		return nombre_archivo;
+	}
+
+	auto getPosCabezal(const unsigned& pag) const {
+		return map_pos_cabezales[pag];
 	}
 
 	auto getPosCabezales() const {
@@ -539,59 +585,35 @@ public:
 		escribirBloque(pag_actual, registro);
 	}
 
-	/*
-	void agregarBloqueVacio() {
-
-		archivo.open(nombre_archivo, std::ios::ate | std::ios::out | std::ios::in | std::ios::binary);
-
-		if (!archivo) {
-			std::cerr << "No se pudo abrir el archivo '" + nombre_archivo + "'\n";
-			exit(EXIT_FAILURE);
-		}
-
-		auto campos_totales = num_total_pags * campos_por_pag;
-
-		Encapsular<T> campo;
-
-		for (unsigned j = 1; j <= campos_por_pag; ++j) {
-			campo.id = campos_totales + j;
-			archivo.write(reinterpret_cast<const char*>(&campo), sizeof(Encapsular<T>));
-		}
-
-		num_total_pags += 1;
-		pos_paginas.insert(std::make_pair(num_total_pags, PAGE_SIZE * num_total_pags));
-
-		archivo.close();
-	}
-	*/
-
 	void infoArchivo() const {
 		std::cout << "CANTIDAD DE PAGINAS: " << num_total_pags << "\nCAMPOS POR PAGINA: " << campos_por_pag << "\nBYTES DEL TIPO DE DATO: " << sizeof(Encapsular<T>)
 			<< "\nBYTES POR PAGINA: " << PAGE_SIZE << "\nBYTES TOTALES DEL ARCHIVO: " << PAGE_SIZE * num_total_pags * sizeof(Encapsular<T>) << '\n';
 	}
 };
 
+
+/*
 template<typename T>
 class BufferPoolManager {
+
 private:
 	class Page {
+		template<typename R> friend class BufferPoolManager;
 	private:
 		bool dirty_bit{}, pinning{};
 		unsigned pin_count{}, count{};
 		unsigned page_id{};
-		std::streampos pos_pagina{};
 	public:
-		Page(const unsigned& page_id, const std::streampos& pos_pagina) : page_id(page_id), pos_pagina(pos_pagina){
+		Page(const unsigned& page_id) : page_id(page_id) {
 			dirty_bit, pinning = false;
 			pin_count, count = 0;
 		}
 
-		Page() : page_id(0), pos_pagina(0) {
+		Page() : page_id(0) {
 			dirty_bit, pinning = false;
 			pin_count, count = 0;
 		}
 
-		~Page(){}
 		friend std::ostream& operator<<(std::ostream& os, const Page& p) {
 			return os << p.page_id;
 		}
@@ -608,36 +630,37 @@ public:
 		for (auto i = 0u; i < archivo->getNumPaginas(); i++) {
 			map_pages.insert(std::make_pair(i, pos_cabezales[i]));
 		}
-		Page* page_null = nullptr;
+
 		for (char i = 65; i < 65 + SIZE_FRAMES; i++) {
+			Page* page_null = nullptr;
 			frame_pag.insert(std::make_pair(i, page_null));
 		}
 	}
 
 	~BufferPoolManager() {
 		for (auto& i : frame_pag) {
-			if (i.second != nullptr) {
-				delete i.second;
-			}
+			if (i.second != nullptr) { delete i.second; }
 		}
 	}
-
 	auto fetchPage(const unsigned& page_id) const{
-
 		for (const auto& i : frame_pag) {
-			if (i.first == page_id) {
-				return *i.second;
+			if (i.second.page_id == page_id) {
+				return i.second;
 			}
 		}
 		throw std::invalid_argument("No se encontro la pagina indicada\n");
 	}
 
 	void newPage(const unsigned& page_id) {
-
 		if (page_id > archivo->getNumPaginas()) {
 			throw std::invalid_argument("No hay ninguna pagina con la id ingresada\n");
 		}
-
+		for (auto& f : frame_pag) {
+			if (f.second == nullptr) {
+				f.second = new Page(page_id);
+				break;
+			}
+		}
 		return;
 	}
 
@@ -660,26 +683,45 @@ public:
 	friend std::ostream& operator<<(std::ostream& os, const BufferPoolManager& buffer) {
 		for (const auto& b : buffer.frame_pag) {
 			os << std::left << std::setw(6) << b.first;
-			if (b.second == nullptr) 
-				os << "NULL\n";
-			else 
-				os << *b.second << '\n';
+			if (b.second == nullptr){ os << "NULL"; }
+			else { os << *b.second; }
+			os << '\n';
 		}
 		return os;
 	}
 };
+*/
 
 
 int main() {
-
+	/*
 	auto archivo = ArchivoFijo<PersonTitanic>("prueba.bin");
 
 	auto buffer = BufferPoolManager<PersonTitanic>(&archivo, 4);
 
+	buffer.newPage(0);
 
-	buffer.newPage(2);
+	std::cout << buffer << '\n';
+	*/
 
-	std::cout << buffer;
+
+	MapaBits m1(5);
+
+	m1.setBit(2);
+
+	std::ofstream os("archivo.bin", std::ios::binary);
+
+	os << m1;
+
+	os.close();
+
+	std::ifstream in("archivo.bin", std::ios::in | std::ios::binary);
+
+	MapaBits m2(5);
+
+	in >> m2;
+
+	in.close();
 
 
 	return 0;
